@@ -112,7 +112,7 @@
 <div id="status" class="status">🎤 Микрофон выключен</div>
 
 <script>
-  // Запрет масштабирования и правой кнопки
+  // Блокировка масштабирования и правой кнопки
   document.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
   document.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -123,14 +123,13 @@
   const recognition = new SpeechRecognition();
 
   recognition.lang = "ru-RU";
-  recognition.continuous = true;
+  recognition.continuous = false;
   recognition.interimResults = false;
 
   let isListening = false;
   let lastTranscript = "";
-  let silenceTimeout;
+  let silenceTimeout = null;
 
-  // Говорит голосом
   function speak(text) {
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = "ru-RU";
@@ -140,26 +139,30 @@
     speechSynthesis.speak(utter);
   }
 
-  // Обработка текста через 2 секунды после молчания
   function handleFinalTranscript(text) {
     if (!text) return;
     statusDiv.textContent = `✅ Команда: "${text}"`;
     speak("Принято: " + text);
 
+    // Спец. команда
     if (text.includes("открой телеграм")) {
       speak("Открываю Телеграм");
       window.location.href = "tg://resolve";
     }
 
+    // Отправка на n8n
     fetch("https://your-n8n-server.com/webhook/receive-voice", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, timestamp: new Date().toISOString() })
+      body: JSON.stringify({
+        text,
+        timestamp: new Date().toISOString()
+      })
     });
   }
 
   recognition.onresult = (event) => {
-    const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+    const transcript = event.results[0][0].transcript.trim().toLowerCase();
     lastTranscript = transcript;
     statusDiv.textContent = `🎙️ Слушаю: "${transcript}"`;
 
@@ -167,31 +170,34 @@
     silenceTimeout = setTimeout(() => {
       handleFinalTranscript(lastTranscript);
       lastTranscript = "";
+      if (isListening) recognition.start(); // restart listening
     }, 2000);
   };
 
   recognition.onend = () => {
-    if (isListening) recognition.start(); // перезапуск
+    if (isListening && !lastTranscript) {
+      recognition.start(); // тишина — сразу перезапускаем
+    }
   };
 
   recognition.onerror = (e) => {
-    statusDiv.textContent = "⚠️ Ошибка: " + e.error;
-    speak("Ошибка распознавания");
+    console.error("Ошибка речи:", e.error);
+    if (isListening) recognition.start();
   };
 
   voiceBtn.addEventListener("click", () => {
     if (!isListening) {
+      isListening = true;
       recognition.start();
       voiceBtn.classList.add("active");
-      statusDiv.textContent = "🎙️ Слушаю...";
+      statusDiv.textContent = "🎙️ Постоянное прослушивание включено";
       speak("Голосовой режим активирован");
-      isListening = true;
     } else {
+      isListening = false;
       recognition.stop();
       voiceBtn.classList.remove("active");
       statusDiv.textContent = "🎤 Микрофон выключен";
       speak("Отключено");
-      isListening = false;
     }
   });
 </script>
