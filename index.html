@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0" />
+  <title>JARVIS Assistant</title>
+  <style>
+    * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: black;
+      overflow: hidden;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .hud-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .voice-button {
+      width: 140px;
+      height: 140px;
+      background: url('IMG_9435.jpeg') no-repeat center;
+      background-size: cover;
+      border: 4px solid #00ffff;
+      border-radius: 50%;
+      box-shadow: 0 0 20px #00ffff, inset 0 0 30px #00ffff;
+      cursor: pointer;
+      transition: 0.3s;
+      z-index: 10;
+    }
+    .voice-button.active {
+      box-shadow: 0 0 40px #00ffff, 0 0 80px #00ffff, inset 0 0 60px #00ffff;
+      transform: scale(1.05);
+    }
+    .status {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 20px;
+      background: rgba(0, 255, 255, 0.07);
+      backdrop-filter: blur(8px);
+      color: #00ffff;
+      border: 1px solid rgba(0,255,255,0.2);
+      border-radius: 10px;
+      font-size: 16px;
+      z-index: 99;
+      text-shadow: 0 0 5px #00ffff;
+    }
+    .scanner-line {
+      position: absolute;
+      width: 2px;
+      height: 100px;
+      background: #00ffff88;
+      animation: scanY 2s linear infinite;
+    }
+    .scanner-line.left { left: 20px; }
+    .scanner-line.right { right: 20px; }
+    @keyframes scanY {
+      0% { top: 0; opacity: 0; }
+      50% { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+    .grid {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .grid svg {
+      width: 100%;
+      height: 100%;
+      opacity: 0.05;
+    }
+  </style>
+</head>
+<body>
+
+<div class="hud-container">
+  <!-- Сканеры -->
+  <div class="scanner-line left"></div>
+  <div class="scanner-line right"></div>
+
+  <!-- Сетка -->
+  <div class="grid">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+      <defs>
+        <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+          <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#00ffff" stroke-width="0.3" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid)" />
+    </svg>
+  </div>
+
+  <!-- Кнопка -->
+  <button id="voiceBtn" class="voice-button" title="Нажмите для запуска голосового ввода"></button>
+</div>
+
+<!-- Статус -->
+<div id="status" class="status">🎤 Микрофон выключен</div>
+
+<script>
+  // Запрет масштабирования и правой кнопки
+  document.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  const voiceBtn = document.getElementById("voiceBtn");
+  const statusDiv = document.getElementById("status");
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = new SpeechRecognition();
+
+  recognition.lang = "ru-RU";
+  recognition.continuous = true;
+  recognition.interimResults = false;
+
+  let isListening = false;
+  let lastTranscript = "";
+  let silenceTimeout;
+
+  // Говорит голосом
+  function speak(text) {
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "ru-RU";
+    utter.pitch = 0.6;
+    utter.rate = 1.05;
+    utter.volume = 1;
+    speechSynthesis.speak(utter);
+  }
+
+  // Обработка текста через 2 секунды после молчания
+  function handleFinalTranscript(text) {
+    if (!text) return;
+    statusDiv.textContent = `✅ Команда: "${text}"`;
+    speak("Принято: " + text);
+
+    if (text.includes("открой телеграм")) {
+      speak("Открываю Телеграм");
+      window.location.href = "tg://resolve";
+    }
+
+    fetch("https://your-n8n-server.com/webhook/receive-voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, timestamp: new Date().toISOString() })
+    });
+  }
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+    lastTranscript = transcript;
+    statusDiv.textContent = `🎙️ Слушаю: "${transcript}"`;
+
+    if (silenceTimeout) clearTimeout(silenceTimeout);
+    silenceTimeout = setTimeout(() => {
+      handleFinalTranscript(lastTranscript);
+      lastTranscript = "";
+    }, 2000);
+  };
+
+  recognition.onend = () => {
+    if (isListening) recognition.start(); // перезапуск
+  };
+
+  recognition.onerror = (e) => {
+    statusDiv.textContent = "⚠️ Ошибка: " + e.error;
+    speak("Ошибка распознавания");
+  };
+
+  voiceBtn.addEventListener("click", () => {
+    if (!isListening) {
+      recognition.start();
+      voiceBtn.classList.add("active");
+      statusDiv.textContent = "🎙️ Слушаю...";
+      speak("Голосовой режим активирован");
+      isListening = true;
+    } else {
+      recognition.stop();
+      voiceBtn.classList.remove("active");
+      statusDiv.textContent = "🎤 Микрофон выключен";
+      speak("Отключено");
+      isListening = false;
+    }
+  });
+</script>
+
+</body>
+</html>
