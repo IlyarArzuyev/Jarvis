@@ -112,7 +112,7 @@
 <div id="status" class="status">🔊 Загрузка JARVIS...</div>
 
 <!-- Аудио -->
-<audio id="introAudio" src="acdc.mp3"></audio>
+<audio id="introAudio" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"></audio>
 
 <script>
   const voiceBtn = document.getElementById("voiceBtn");
@@ -145,7 +145,7 @@
   function handleFinalTranscript(text) {
     if (!text) return;
     statusDiv.textContent = `✅ Команда: "${text}"`;
-    speak("Принято: " + text);
+    speak("Да сэр!: " + text);
 
     if (text.includes("открой телеграм")) {
       speak("Открываю Телеграм");
